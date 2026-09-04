@@ -1,0 +1,21 @@
+# Harvested data is large (millions of records, many GB) and belongs on
+# Hugging Face, not in git -- see README's "Data" section.
+data/*
+!data/.gitkeep
+!data/raw/.gitkeep
+
+*.db
+*.sqlite
+*.sqlite3
+
+logs/*
+!logs/.gitkeep
+
+.venv
+.venv/
+__pycache__/
+*.pyc
+
+.env
+*.env
+!*.env.example

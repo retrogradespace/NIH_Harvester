@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIH Harvester</title>
+  <meta name="description"
+    content="A nationwide, schema-on-read pull of NIH RePORTER project records (FY1985-present), with an adaptive pagination strategy that gets full coverage despite the API's 10,000-record cap.">
+  <style>
+    :root {
+      --bg: #fbfaf8;
+      --bg-raised: #ffffff;
+      --text: #1c1a17;
+      --text-muted: #5f5a52;
+      --border: #e4ded4;
+      --accent: #9a5b2e;
+      --accent-soft: #f3e6d8;
+      --code-bg: #f4f0e8;
+      --shadow: 0 1px 2px rgba(28, 26, 23, 0.06), 0 4px 16px rgba(28, 26, 23, 0.04);
+      --radius: 10px;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16140f;
+        --bg-raised: #1e1b15;
+        --text: #ede7dc;
+        --text-muted: #a89e8d;
+        --border: #332e24;
+        --accent: #e0a96d;
+        --accent-soft: #3a2c1c;
+        --code-bg: #221e16;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 20px rgba(0, 0, 0, 0.25);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 0 24px 96px;
+    }
+
+    header.hero {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 72px 24px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-size: clamp(2.2rem, 5vw, 3.1rem);
+      font-weight: 600;
+      line-height: 1.1;
+      margin: 0 0 18px;
+      letter-spacing: -0.01em;
+    }
+
+    .tagline {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 60ch;
+      margin: 0 0 28px;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg-raised);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: var(--shadow);
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .links a:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .links a.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin: 40px 0 0;
+    }
+
+    .stat {
+      background: var(--bg-raised);
+      padding: 20px 18px;
+      text-align: center;
+    }
+
+    .stat .n {
+      font-family: var(--serif);
+      font-size: 1.7rem;
+      font-weight: 600;
+      color: var(--accent);
+      display: block;
+    }
+
+    .stat .l {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+
+    section {
+      padding: 48px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    section:last-of-type {
+      border-bottom: none;
+    }
+
+    h2 {
+      font-family: var(--serif);
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0 0 20px;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 28px 0 10px;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--text);
+    }
+
+    p.muted {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.87em;
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin: 0 0 16px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    td code,
+    th code {
+      white-space: nowrap;
+    }
+
+    .steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      counter-reset: step;
+    }
+
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 0 0 22px 44px;
+      border-left: 1px solid var(--border);
+      margin-left: 15px;
+    }
+
+    .steps li:last-child {
+      border-left-color: transparent;
+      padding-bottom: 0;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: -15px;
+      top: 0;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .steps h3 {
+      margin: 0 0 6px;
+    }
+
+    .steps p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.94rem;
+    }
+
+    .callout {
+      background: var(--accent-soft);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+
+    .callout strong {
+      color: var(--accent);
+    }
+
+    footer {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="hero">
+    <p class="eyebrow">Open dataset &amp; pipeline</p>
+    <h1>NIH Harvester</h1>
+    <p class="tagline">A complete, nationwide pull of NIH RePORTER project records — FY1985 to present — with a
+      schema-on-read design and an adaptive pagination strategy that gets full coverage despite NIH's 10,000-record cap.
+    </p>
+    <div class="links">
+      <a class="primary" href="https://github.com/retrogradespace/NIH_Harvester">GitHub repo</a>
+      <a href="https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest">Hugging Face dataset</a>
+      <a href="https://reporter.nih.gov/">NIH RePORTER</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="n">~2.96M</span><span class="l">Records</span></div>
+      <div class="stat"><span class="n">42</span><span class="l">Fiscal years</span></div>
+      <div class="stat"><span class="n">99.4%+</span><span class="l">Coverage</span></div>
+    </div>
+  </header>
+
+  <main>
+
+    <section>
+      <h2>Overview</h2>
+      <p>This project pulls a full project record for every NIH RePORTER application, nationwide, with no institution
+        scoping, into a local SQLite database. Rather than flattening each API response into typed columns at load time,
+        it stores each record's raw JSON verbatim and layers two derived views on top for querying so nothing NIH
+        returns is ever dropped, truncated, or silently lost.</p>
+      <p>It was validated on a single institution's own NIH-funded portfolio, then generalized into a nationwide pull
+        and a worked tutorial: the real difficulty isn't the data model, it's getting <em>every</em> record back from an
+        API that hard-caps pagination at 10,000 results per query.</p>
+    </section>
+
+    <section>
+      <h2>Why schema-on-read</h2>
+      <p>The common approach flatten each response into one typed column per field as you load it is fragile. If you
+        also restrict which fields you request, two decisions (which fields to ask for, and which columns to store) end
+        up made twice, in two different places, and either one can silently drop data if it's wrong. If NIH adds a field
+        later, or a value grows past whatever width you picked, it just vanishes with no error.</p>
+      <p>This pipeline avoids both failure modes. <code>include_fields</code> is never set, and each record's raw JSON
+        is stored verbatim in one column, with only <code>appl_id</code>, <code>project_num</code>,
+        <code>core_project_num</code>, and <code>fiscal_year</code> promoted out for indexing. The
+        <code>nih_parsed</code> view flattens it back out for convenient querying a read-time convenience on top of an
+        unmodified archive, not a decision made once at load time.</p>
+    </section>
+
+    <section>
+      <h2>The hard problem: pagination at scale</h2>
+      <p>NIH RePORTER's <code>/v2/projects/search</code> endpoint caps <code>offset + limit</code> at 10,000, so you can
+        never page past the first 10,000 matches of a query no matter how many more exist. That's a non-issue for a
+        single institution. Nationwide, fiscal-year totals run 50,000&ndash;94,000, and even the single largest NIH
+        institute (NCI) in a peak year is 12,590 on its own, over the cap by itself.</p>
+
+      <h3>Dual-pass</h3>
+      <p>Paginate the same query once ascending by <code>appl_id</code>, once descending. The two 10,000-record windows
+        necessarily overlap once the true total is under 20,000, so their union is guaranteed to cover every record
+        verified against a real 12,590-record bucket (NCI, FY2010): exactly 12,590/12,590.</p>
+
+      <h3>Split by agency, only above 20,000</h3>
+      <p>An earlier version split by NIH's ~27 current institutes/centers as a fixed list measurably not enough,
+        covering only 70% of FY1985 (missing defunct codes like <code>NCRR</code> and non-NIH agencies like
+        <code>AHRQ</code>, <code>FDA</code>). No fixed list is reliable across 40 years of agency reorganizations, so
+        agency codes are discovered from a real sample of that year's data and cross-checked against a broad fallback
+        list closing the gap from 70% to 99.4%+, with any residual logged explicitly rather than silently dropped.</p>
+
+      <h3>A confirmed API gotcha, four times over</h3>
+      <p>Every criteria field tested silently accepts its documented camelCase spelling (matching NIH's own swagger
+        spec) but does nothing no error, just the unfiltered result set. The working spelling is snake_case,
+        undocumented anywhere:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>camelCase (spec)</th>
+            <th>snake_case (works)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Organization type</td>
+            <td><code>organizationType</code></td>
+            <td><code>organization_type</code></td>
+          </tr>
+          <tr>
+            <td>Date added</td>
+            <td><code>dateAdded</code> / <code>fromDate</code></td>
+            <td><code>date_added</code> / <code>from_date</code></td>
+          </tr>
+          <tr>
+            <td>Activity codes</td>
+            <td><code>activityCodes</code></td>
+            <td><code>activity_codes</code></td>
+          </tr>
+          <tr>
+            <td>Org states</td>
+            <td><code>orgStates</code></td>
+            <td><code>org_states</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Pipeline</h2>
+      <ol class="steps">
+        <li>
+          <h3><code>1_harvest_raw.py</code></h3>
+          <p>Nationwide pull, every fiscal year, one JSONL file per year. An interruption only costs the in-progress
+            year a <code>.done</code> marker means a rerun skips completed years.</p>
+        </li>
+        <li>
+          <h3><code>2_load_to_sqlite.py</code></h3>
+          <p>Loads every <code>fy*.jsonl</code> into <code>nih_harvester.db</code>. Idempotent: hashes existing rows
+            first, only inserts new / updates changed / skips unchanged.</p>
+        </li>
+        <li>
+          <h3>Derived views</h3>
+          <p><code>nih_parsed</code> flattens the raw JSON into ~50 columns; <code>nih_indicators</code> layers a worked
+            multi-year-funding classification on top.</p>
+        </li>
+      </ol>
+
+      <pre><code>./setup.sh
+cd src
+../.venv/bin/python3 1_harvest_raw.py
+../.venv/bin/python3 2_load_to_sqlite.py
+
+sqlite3 ../data/nih_harvester.db &lt; ../ddl/nih_parsed_view.sql
+sqlite3 ../data/nih_harvester.db &lt; ../ddl/nih_indicators_view.sql</code></pre>
+    </section>
+
+    <section>
+      <h2>Schema</h2>
+      <p><code>nih_raw_projects</code> — the landing table:</p>
+      <pre><code>appl_id            INTEGER PRIMARY KEY   -- NIH's unique id per fiscal-year application record
+project_num        TEXT
+core_project_num   TEXT
+fiscal_year        INTEGER
+raw_json           TEXT NOT NULL         -- the full API record, verbatim
+row_hash           TEXT NOT NULL         -- sha256 of raw_json's canonical form
+valid_from         TEXT
+valid_to           TEXT                  -- unused for now; reserved for future use
+is_current         INTEGER NOT NULL DEFAULT 1</code></pre>
+
+      <div class="callout">
+        <strong>Worth knowing about the MYF classification:</strong> it's narrow and requires the <em>budget</em> period
+        to exactly match the <em>project</em> period, which most fiscal-year records don't, since NIH typically funds
+        one year at a time via non-competing continuations.
+      </div>
+    </section>
+
+    <section>
+      <h2>Data &amp; license</h2>
+      <p>Harvesting from scratch takes hours and pulls tens of GB of JSON. A pre-built copy is published on <a
+          href="https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest">Hugging Face</a>.</p>
+      <p>NIH RePORTER data is a U.S. government work and in the public domain — see <a
+          href="https://reporter.nih.gov/">NIH RePORTER's terms</a> for the authoritative statement. The code in this
+        repository is MIT-licensed.</p>
+    </section>
+
+  </main>
+
+  <footer>
+    <p><a href="https://github.com/retrogradespace/NIH_Harvester">retrogradespace/NIH_Harvester</a> — MIT licensed.</p>
+  </footer>
+
+</body>
+
+</html>
